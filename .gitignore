@@ -1,0 +1,4 @@
+app/backend/node_modules
+app/backend/dist
+app/backend/npm-debug.log
+app/backend/.env

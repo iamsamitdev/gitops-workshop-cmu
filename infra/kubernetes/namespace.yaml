@@ -1,0 +1,30 @@
+# namespace.yaml
+# Workshop: GitOps with Argo CD — Day 1, Section 2
+# สร้าง namespace สำหรับแต่ละ environment
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    environment: dev
+    managed-by: workshop
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: staging
+  labels:
+    environment: staging
+    managed-by: workshop
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    environment: production
+    managed-by: workshop

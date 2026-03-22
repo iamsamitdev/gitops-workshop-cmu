@@ -1,0 +1,31 @@
+# service.yaml
+# Workshop: GitOps with Argo CD — Day 1, Section 2, Lab 3
+# Service สำหรับ expose Nginx ออก
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-demo
+  namespace: dev
+  labels:
+    app: nginx-demo
+    managed-by: workshop
+spec:
+  # NodePort — เข้าถึงได้จาก localhost:<nodePort>
+  # ใน production จะใช้ ClusterIP + Ingress แทน
+  type: NodePort
+  selector:
+    app: nginx-demo
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80           # port ของ Service (ภายใน cluster)
+      targetPort: 80     # port ของ container
+      nodePort: 30080    # port ที่เปิดออก host (ต้องตรงกับ kind-config.yaml)
+
+# คำสั่งสำหรับ Lab 3:
+# kubectl apply -f infra/kubernetes/service.yaml
+# kubectl get svc -n dev
+#
+# เข้าถึง Nginx จาก browser:
+# http://localhost:30080

@@ -1,0 +1,39 @@
+# infra/kustomize/overlays/dev/kustomization.yaml
+# Workshop: GitOps with Argo CD — Day 1, Section 4 + Day 2, Section 6
+# Dev overlay — สำหรับ development environment
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# ชี้ไปที่ base
+bases:
+  - ../../base
+
+# Namespace ที่ deploy
+namespace: dev
+
+# เพิ่ม label บอก environment
+commonLabels:
+  environment: dev
+
+# Override replicas — dev ใช้น้อยเพื่อประหยัด resource
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+    target:
+      kind: Deployment
+      name: my-app
+
+# Override image tag — CI pipeline จะ update ค่านี้อัตโนมัติ
+# (ใช้ git SHA แทน latest)
+images:
+  - name: ghcr.io/REPLACE_USERNAME/my-app
+    newTag: latest   # จะถูกแทนที่ด้วย git SHA โดย CI
+
+# คำสั่งสำหรับ Day 1, Lab 7:
+# kubectl apply -k infra/kustomize/overlays/dev/ -n dev
+#
+# ดู rendered YAML:
+# kubectl kustomize infra/kustomize/overlays/dev/

@@ -1,0 +1,45 @@
+# infra/kustomize/overlays/production/kustomization.yaml
+# Workshop: GitOps with Argo CD — Day 2, Section 6
+# Production overlay — สำหรับ production environment
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+bases:
+  - ../../base
+
+namespace: production
+
+commonLabels:
+  environment: production
+
+patches:
+  # replicas สูงขึ้นสำหรับ production
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+    target:
+      kind: Deployment
+      name: my-app
+  # เพิ่ม resource limits สำหรับ production
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+    target:
+      kind: Deployment
+      name: my-app
+
+images:
+  - name: ghcr.io/REPLACE_USERNAME/my-app
+    newTag: latest   # จะถูกแทนที่ด้วย git SHA โดย CI (ห้ามใช้ latest จริงใน production!)
+
+# คำสั่ง:
+# kubectl apply -k infra/kustomize/overlays/production/ -n production

@@ -1,0 +1,30 @@
+# infra/kustomize/overlays/staging/kustomization.yaml
+# Workshop: GitOps with Argo CD — Day 2, Section 6
+# Staging overlay — สำหรับ pre-production testing
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+bases:
+  - ../../base
+
+namespace: staging
+
+commonLabels:
+  environment: staging
+
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+      name: my-app
+
+images:
+  - name: ghcr.io/REPLACE_USERNAME/my-app
+    newTag: latest   # จะถูกแทนที่ด้วย git SHA โดย CI
+
+# คำสั่ง:
+# kubectl apply -k infra/kustomize/overlays/staging/ -n staging

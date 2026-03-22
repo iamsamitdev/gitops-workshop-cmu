@@ -1,0 +1,26 @@
+# infra/kustomize/base/kustomization.yaml
+# Workshop: GitOps with Argo CD — Day 1, Section 4, Lab 7
+# Base kustomization — รวม resources ทั้งหมดของ base
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Metadata จะถูก inherit โดย overlay
+metadata:
+  name: my-app-base
+
+# รายการ resource ที่อยู่ใน base
+resources:
+  - deployment.yaml
+  - service.yaml
+
+# Common labels ที่จะถูก inject เข้าทุก resource
+commonLabels:
+  app: my-app
+  managed-by: kustomize
+
+# คำสั่งทดสอบ base:
+# kubectl apply -k infra/kustomize/base/ -n dev
+#
+# ดู rendered YAML ก่อน apply:
+# kubectl kustomize infra/kustomize/base/

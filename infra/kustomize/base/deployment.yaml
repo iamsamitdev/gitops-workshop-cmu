@@ -1,0 +1,60 @@
+# infra/kustomize/base/deployment.yaml
+# Workshop: GitOps with Argo CD — Day 1, Section 4, Lab 7
+# Base Deployment — ใช้ร่วมกันในทุก environment ผ่าน Kustomize overlay
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  labels:
+    app: my-app
+spec:
+  replicas: 1                       # overlay จะ override ค่านี้ต่อ environment
+  selector:
+    matchLabels:
+      app: my-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: my-app
+          # image tag จะถูก update โดย CI pipeline (GitHub Actions)
+          # โดยใช้ git SHA เสมอ — ไม่ใช้ latest!
+          image: ghcr.io/REPLACE_USERNAME/my-app:latest
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3000"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3

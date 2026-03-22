@@ -1,0 +1,98 @@
+# .github/workflows/build-push.yml
+# Workshop: GitOps with Argo CD — Day 1, Section 3, Lab 5
+# CI Pipeline: Build Docker Image และ Push ไป GitHub Container Registry (GHCR)
+
+name: CI - Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+  # อนุญาตให้ trigger ด้วยมือจาก GitHub UI
+  workflow_dispatch:
+
+# Environment variables ที่ใช้ร่วมกันทุก job
+env:
+  REGISTRY: ghcr.io
+  # github.repository = "<owner>/<repo-name>"
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+
+    # Permission สำหรับ push ไป GHCR
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # ─── Step 1: Checkout code ───────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ─── Step 2: Setup Docker Buildx ─────────────────────────
+      # BuildKit ทำให้ build เร็วขึ้นและรองรับ multi-platform
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ─── Step 3: Login to GHCR ───────────────────────────────
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          # GITHUB_TOKEN ถูกสร้างอัตโนมัติ ไม่ต้องตั้งค่าเพิ่ม
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ─── Step 4: Extract metadata (tags, labels) ─────────────
+      # สร้าง image tags และ OCI labels อัตโนมัติ
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Tag ด้วย Git SHA (short) — ตรวจสอบได้ว่า build จาก commit ไหน
+            type=sha,prefix=,format=short
+            # Tag ด้วย branch name
+            type=ref,event=branch
+            # Tag ว่า latest เฉพาะ main branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # ─── Step 5: Build and Push ──────────────────────────────
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Cache สำหรับเพิ่มความเร็วในการ build ครั้งต่อไป
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ─── Step 6: Output summary ──────────────────────────────
+      - name: Image digest summary
+        run: |
+          echo "## 🐳 Docker Image Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| ข้อมูล | ค่า |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Registry** | ${{ env.REGISTRY }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Image** | ${{ env.IMAGE_NAME }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit SHA** | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Triggered by** | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+# ─── วิธีใช้ image ที่ build แล้ว ──────────────────────────────
+# docker pull ghcr.io/<owner>/<repo>:<git-sha>
+# docker run -d -p 3000:3000 ghcr.io/<owner>/<repo>:<git-sha>
+#
+# ดูรายการ image ใน GitHub:
+# ไปที่ repo → Packages tab

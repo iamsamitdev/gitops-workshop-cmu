@@ -1,0 +1,67 @@
+# deployment.yaml
+# Workshop: GitOps with Argo CD — Day 1, Section 2, Lab 3
+# Deploy Nginx เพื่อทดสอบ Kubernetes basics
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-demo
+  namespace: dev
+  labels:
+    app: nginx-demo
+    version: "1.0"
+    managed-by: workshop
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx-demo
+  # Rolling update strategy — ค่อยๆ เปลี่ยน pod ทีละตัว
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: nginx-demo
+        version: "1.0"
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          # Resource limits — best practice สำหรับ production
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+          # Health checks
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 30
+
+# คำสั่งสำหรับ Lab 3:
+# kubectl apply -f infra/kubernetes/deployment.yaml
+# kubectl get pods -n dev
+# kubectl describe deployment nginx-demo -n dev
+#
+# Lab 4 — Rollback:
+# kubectl set image deployment/nginx-demo nginx=nginx:1.28-alpine -n dev
+# kubectl rollout history deployment/nginx-demo -n dev
+# kubectl rollout undo deployment/nginx-demo -n dev
