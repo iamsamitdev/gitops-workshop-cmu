@@ -19,10 +19,10 @@ spec:
 
   source:
     # แก้ repoURL ให้ตรงกับ GitHub repo ของคุณ
-    repoURL: https://github.com/<username>/gitops-workshop-cmu.git
+    repoURL: https://github.com/iamsamitdev/nodejs_backendapp_deployment.git
     targetRevision: main
     # ชี้ไปที่ Kustomize overlay ของ dev
-    path: infra/kustomize/overlays/dev
+    path: overlays/dev
 
   destination:
     server: https://kubernetes.default.svc
