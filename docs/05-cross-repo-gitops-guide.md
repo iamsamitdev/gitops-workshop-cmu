@@ -10,19 +10,19 @@
 ## ภาพรวม Pipeline
 
 ```
-App Repo (nodejs-backendapp)         Manifest Repo (nodejs_backendapp_deployment)
-┌──────────────────────────┐         ┌─────────────────────────────────────┐
-│ src/                     │         │ base/                               │
-│ Dockerfile               │         │   deployment.yaml                   │
-│ .github/workflows/       │         │   service.yaml                      │
-│   build-push.yml         ┼──git──▶ kustomization.yaml (update tag)      │
-└──────────────────────────┘  push   │ overlays/                           │
-         │                           │   staging/                          │
-         │ docker push               │   production/                       │
-         ▼                           └────────────┬────────────────────────┘
+App Repo (app-repo)         Manifest Repo (manifest-repo)
+┌──────────────────────────┐            ┌─────────────────────────────────────┐
+│ src/                     │            │ base/                               │
+│ Dockerfile               │            │   deployment.yaml                   │
+│ index.html               │──git push─▶│   service.yaml                      │
+│ .github/workflows/       │            │   kustomization.yaml (update tag)   │
+│   build-push.yml         │            │ overlays/                           │
+└──────────────────────────┘            │     staging/                        │
+         │                              │     production/                     │
+         ▼                              └────────────┬────────────────────────┘
     GHCR Registry                                 │ auto-sync poll (3 min)
     ghcr.io/iamsamitdev/                          ▼
-    nodejs-backendapp:sha               Argo CD → K8s Cluster
+    app-repo:sha               Argo CD → K8s Cluster
 ```
 
 ---
@@ -42,35 +42,91 @@ App Repo (nodejs-backendapp)         Manifest Repo (nodejs_backendapp_deployment
 
 ## ส่วนที่ 1: สร้าง GitHub PAT
 
-### 1.1 สร้าง PAT สำหรับ App Repo (CI)
+### PAT ที่ต้องสร้างทั้งหมด
+
+```
+PAT ทั้งหมดเป็น credential สำหรับเข้าถึง Manifest Repo (private)
+เพราะทุก actor ต้องการเข้าถึง Manifest Repo ในรูปแบบที่ต่างกัน:
+
+┌──────────────────────────────────────────────────────────────┐
+│  Actor              PAT ที่ใช้           Access Level            │
+├──────────────────────────────────────────────────────────────┤
+│  GitHub Actions  ─▶ GHCR_TOKEN          write:packages       │
+│  (App Repo CI)      (push Docker image ไป GHCR)              │
+├──────────────────────────────────────────────────────────────┤
+│  GitHub Actions  ─▶ MANIFEST_REPO_TOKEN  write:contents      │
+│  (App Repo CI)      (push commit ข้าม repo ไป Manifest Repo)   │
+├──────────────────────────────────────────────────────────────┤
+│  Argo CD         ─▶ ARGOCD_REPO_TOKEN   read:contents        │
+│                     (clone/pull Manifest Repo เพื่อ sync)       │
+└──────────────────────────────────────────────────────────────┘
+```
+💡 MANIFEST_REPO_TOKEN กับ ARGOCD_REPO_TOKEN ใช้ token อันเดียวกันได้
+   ถ้า permission เป็น Read and write (ครอบคลุมทั้ง 2 กรณี)
+
+### 1.1 PAT #1 — GHCR_TOKEN (push Docker image)
 
 ไปที่ GitHub → **Settings → Developer settings → Personal access tokens → Fine-grained tokens**
 
-**ตั้งค่า:**
-- **Token name:** `GITOPS_MANIFEST_TOKEN`
-- **Repository access:** เลือกเฉพาะ `nodejs_backendapp_deployment`
-- **Permissions:**
-  - Contents: `Read and write` ✅
-  - Metadata: `Read-only` ✅ (บังคับ)
+| ฟิลด์ | ค่า |
+|---|---|
+| Token name | `GHCR_TOKEN` |
+| Repository access | **All repositories** หรือเลือก `app-repo` |
+| Permissions → Packages | `Read and write` ✅ |
+| Permissions → Metadata | `Read-only` ✅ (บังคับ) |
 
-> **สำคัญ:** copy token ไว้ทันที — จะเห็นแค่ครั้งเดียว!
-
-### 1.2 สร้าง PAT สำหรับ Argo CD (CD)
-
-ใช้ token เดิม หรือสร้างใหม่สำหรับ Manifest Repo:
-
-- **Repository access:** เลือก `nodejs_backendapp_deployment`
-- **Permissions:**
-  - Contents: `Read-only` ✅ (Argo CD แค่ read)
-  - Metadata: `Read-only` ✅
+> **ใช้ใน:** App Repo CI → push Docker image ไปที่ `ghcr.io`
 
 ---
 
-## ส่วนที่ 2: ตั้งค่า App Repo (nodejs-backendapp)
+### 1.2 PAT #2 — MANIFEST_REPO_TOKEN (write ข้าม repo)
+
+| ฟิลด์ | ค่า |
+|---|---|
+| Token name | `MANIFEST_REPO_TOKEN` |
+| Repository access | เลือกเฉพาะ **`app-repo`** (Manifest Repo!) |
+| Permissions → Contents | `Read and write` ✅ |
+| Permissions → Metadata | `Read-only` ✅ (บังคับ) |
+
+> **ใช้ใน:** App Repo CI → checkout และ push commit ไปที่ Manifest Repo (update image tag)
+
+---
+
+### 1.3 PAT #3 — ARGOCD_REPO_TOKEN (Argo CD อ่าน Manifest Repo)
+
+> **💡 Shortcut:** ถ้าไม่อยากสร้างเพิ่ม — ใช้ **`MANIFEST_REPO_TOKEN`** (อันเดิม) ได้เลย  
+> เพราะ `Read and write` ครอบ `Read-only` อยู่แล้ว
+
+ถ้าต้องการแยก token เพื่อ principle of least privilege:
+
+| ฟิลด์ | ค่า |
+|---|---|
+| Token name | `ARGOCD_REPO_TOKEN` |
+| Repository access | เลือกเฉพาะ **`app-repo`** |
+| Permissions → Contents | `Read-only` ✅ (Argo CD แค่ read) |
+| Permissions → Metadata | `Read-only` ✅ |
+
+> **ใช้ใน:** `argocd repo add` หรือ `kubectl create secret` → ให้ Argo CD clone Manifest Repo ได้
+
+---
+
+### สรุป PAT ทั้งหมด
+
+| Token Name | เก็บไว้ที่ไหน | ชี้ไปที่ Repo ไหน | Permission |
+|---|---|---|---|
+| `GHCR_TOKEN` | App Repo → GitHub Secrets | `app-repo` (packages) | write:packages |
+| `MANIFEST_REPO_TOKEN` | App Repo → GitHub Secrets | `app-repo` | write:contents |
+| `ARGOCD_REPO_TOKEN` | Argo CD credential | `app-repo` | read:contents |
+
+> **copy token ไว้ทันที** หลังสร้างทุกอัน — GitHub จะแสดงแค่ครั้งเดียว!
+
+---
+
+## ส่วนที่ 2: ตั้งค่า App Repo (app-repo)
 
 ### 2.1 เพิ่ม GitHub Secrets ใน App Repo
 
-ไปที่ `nodejs-backendapp` → **Settings → Secrets and variables → Actions → New repository secret**
+ไปที่ `app-repo` → **Settings → Secrets and variables → Actions → New repository secret**
 
 | Secret Name | ค่า | ใช้ทำอะไร |
 |---|---|---|
@@ -81,7 +137,7 @@ App Repo (nodejs-backendapp)         Manifest Repo (nodejs_backendapp_deployment
 
 ```yaml
 # 📁 .github/workflows/build-push.yml
-# (ใน nodejs-backendapp repo)
+# (ใน app-repo repo)
 #
 # Workflow นี้ทำ:
 # 1. Build Docker image
@@ -98,8 +154,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}   # = iamsamitdev/nodejs-backendapp
-  MANIFEST_REPO: iamsamitdev/nodejs_backendapp_deployment
+  IMAGE_NAME: ${{ github.repository }}   # = iamsamitdev/app-repo
+  MANIFEST_REPO: iamsamitdev/manifest-repo   # ชื่อ repo ที่เก็บ Kubernetes manifests
 
 jobs:
   build-and-push:
@@ -179,7 +235,7 @@ jobs:
           # ตัวอย่าง: update overlay สำหรับ staging
           cd base
           kustomize edit set image \
-            ghcr.io/iamsamitdev/nodejs-backendapp="${IMAGE}"
+            ghcr.io/iamsamitdev/app-repo="${IMAGE}"
 
           echo "📄 Updated kustomization.yaml:"
           cat kustomization.yaml
@@ -199,7 +255,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "✅ No changes — image tag already up to date"
           else
-            git commit -m "deploy: update nodejs-backendapp image to ${SHORT_SHA}
+            git commit -m "deploy: update app-repo image to ${SHORT_SHA}
 
             App Repo: ${{ github.repository }}
             Commit: ${{ github.sha }}
@@ -216,19 +272,19 @@ jobs:
           echo "## 🚀 Build & Deploy Summary" >> $GITHUB_STEP_SUMMARY
           echo "| ข้อมูล | ค่า |" >> $GITHUB_STEP_SUMMARY
           echo "| --- | --- |" >> $GITHUB_STEP_SUMMARY
-          echo "| Image | \`ghcr.io/iamsamitdev/nodejs-backendapp:${SHORT_SHA:0:7}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | \`ghcr.io/iamsamitdev/app-repo:${SHORT_SHA:0:7}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Manifest Repo | Updated ✅ |" >> $GITHUB_STEP_SUMMARY
           echo "| Argo CD | Will sync within 3 minutes |" >> $GITHUB_STEP_SUMMARY
 ```
 
 ---
 
-## ส่วนที่ 3: ตั้งค่า Manifest Repo (nodejs_backendapp_deployment)
+## ส่วนที่ 3: ตั้งค่า Manifest Repo (manifest-repo)
 
 ### 3.1 โครงสร้างไฟล์ที่ควรมี
 
 ```
-nodejs_backendapp_deployment/
+manifest-repo/
 ├── base/
 │   ├── deployment.yaml
 │   ├── service.yaml
@@ -248,21 +304,21 @@ nodejs_backendapp_deployment/
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nodejs-backendapp
+  name: app-repo
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nodejs-backendapp
+      app: app-repo
   template:
     metadata:
       labels:
-        app: nodejs-backendapp
+        app: app-repo
     spec:
       containers:
-        - name: nodejs-backendapp
+        - name: app-repo
           # ค่า image นี้จะถูก override โดย kustomize images patch
-          image: ghcr.io/iamsamitdev/nodejs-backendapp:latest
+          image: ghcr.io/iamsamitdev/app-repo:latest
           ports:
             - containerPort: 3000
           env:
@@ -277,10 +333,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: nodejs-backendapp
+  name: app-repo
 spec:
   selector:
-    app: nodejs-backendapp
+    app: app-repo
   ports:
     - port: 80
       targetPort: 3000
@@ -292,7 +348,7 @@ spec:
 ```yaml
 # 📁 base/kustomization.yaml
 # ⚠️  ไฟล์นี้จะถูก CI pipeline แก้ไข images.newTag อัตโนมัติ
-#     โดยใช้: kustomize edit set image ghcr.io/iamsamitdev/nodejs-backendapp=<sha>
+#     โดยใช้: kustomize edit set image ghcr.io/iamsamitdev/app-repo=<sha>
 
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -303,7 +359,7 @@ resources:
 
 # CI pipeline จะ update ค่านี้อัตโนมัติ
 images:
-  - name: ghcr.io/iamsamitdev/nodejs-backendapp
+  - name: ghcr.io/iamsamitdev/app-repo
     newTag: latest   # ← ค่านี้จะถูก CI update เป็น git SHA เช่น a1b2c3d
 ```
 
@@ -327,7 +383,7 @@ namespace: staging
 patches:
   - target:
       kind: Deployment
-      name: nodejs-backendapp
+      name: app-repo
     patch: |
       - op: replace
         path: /spec/replicas
@@ -354,7 +410,7 @@ namespace: production
 patches:
   - target:
       kind: Deployment
-      name: nodejs-backendapp
+      name: app-repo
     patch: |
       - op: replace
         path: /spec/replicas
@@ -378,7 +434,7 @@ argocd login localhost:8080 \
   --insecure
 
 # เพิ่ม private manifest repo
-argocd repo add https://github.com/iamsamitdev/nodejs_backendapp_deployment.git \
+argocd repo add https://github.com/iamsamitdev/manifest-repo.git \
   --username iamsamitdev \
   --password <MANIFEST_REPO_TOKEN>
 
@@ -395,7 +451,7 @@ argocd repo list
 kubectl create secret generic argocd-repo-nodejs-deployment \
   --namespace=argocd \
   --from-literal=type=git \
-  --from-literal=url=https://github.com/iamsamitdev/nodejs_backendapp_deployment.git \
+  --from-literal=url=https://github.com/iamsamitdev/manifest-repo.git \
   --from-literal=username=iamsamitdev \
   --from-literal=password=<MANIFEST_REPO_TOKEN>
 
@@ -425,14 +481,14 @@ kubectl create namespace staging
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: nodejs-backendapp-staging
+  name: app-repo-staging
   namespace: argocd
 spec:
   project: default
 
   source:
     # Private Manifest Repo — Argo CD ใช้ credentials ที่ตั้งไว้ใน Section 4
-    repoURL: https://github.com/iamsamitdev/nodejs_backendapp_deployment.git
+    repoURL: https://github.com/iamsamitdev/manifest-repo.git
     targetRevision: main
     path: overlays/staging      # ชี้ไป overlay สำหรับ staging
 
@@ -459,13 +515,13 @@ kubectl apply -f argo-app-staging.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: nodejs-backendapp-production
+  name: app-repo-production
   namespace: argocd
 spec:
   project: default
 
   source:
-    repoURL: https://github.com/iamsamitdev/nodejs_backendapp_deployment.git
+    repoURL: https://github.com/iamsamitdev/manifest-repo.git
     targetRevision: main
     path: overlays/production    # ชี้ไป overlay สำหรับ production
 
@@ -488,8 +544,8 @@ kubectl apply -f argo-app-production.yaml
 
 ```bash
 # Staging — auto-sync
-argocd app create nodejs-backendapp-staging \
-  --repo https://github.com/iamsamitdev/nodejs_backendapp_deployment.git \
+argocd app create app-repo-staging \
+  --repo https://github.com/iamsamitdev/app-repo.git \
   --path overlays/staging \
   --dest-server https://kubernetes.default.svc \
   --dest-namespace staging \
@@ -498,8 +554,8 @@ argocd app create nodejs-backendapp-staging \
   --self-heal
 
 # Production — manual sync
-argocd app create nodejs-backendapp-production \
-  --repo https://github.com/iamsamitdev/nodejs_backendapp_deployment.git \
+argocd app create app-repo-production \
+  --repo https://github.com/iamsamitdev/app-repo.git \
   --path overlays/production \
   --dest-server https://kubernetes.default.svc \
   --dest-namespace production
@@ -542,8 +598,8 @@ spec:
       imagePullSecrets:
         - name: ghcr-secret
       containers:
-        - name: nodejs-backendapp
-          image: ghcr.io/iamsamitdev/nodejs-backendapp:latest
+        - name: app-repo
+          image: ghcr.io/iamsamitdev/app-repo:latest
 ```
 
 ---
@@ -554,7 +610,7 @@ spec:
 
 ```bash
 # 1. แก้ code ใน App Repo
-# เปิด nodejs-backendapp และแก้ไขอะไรก็ได้ เช่น version number
+# เปิด app-repo และแก้ไขอะไรก็ได้ เช่น version number
 
 # 2. Commit & Push
 git add .
@@ -565,7 +621,7 @@ git push origin main
 # → Build image → Push GHCR → Update manifest repo
 
 # 4. ดู Manifest Repo — image tag เปลี่ยนอัตโนมัติ
-# ไปที่ nodejs_backendapp_deployment → base/kustomization.yaml
+# ไปที่ app-repo → base/kustomization.yaml
 # จะเห็น newTag: <new-sha>
 
 # 5. ดู Argo CD
@@ -575,14 +631,14 @@ argocd app list
 # 6. ตรวจสอบ
 kubectl get pods -n staging
 kubectl get pods -n production
-argocd app get nodejs-backendapp-staging
+argocd app get app-repo-staging
 ```
 
 ---
 
 ## สรุป: Config ที่ต้องทำทั้งหมด
 
-### App Repo (nodejs-backendapp) ✅
+### App Repo (app-repo) ✅
 
 | สิ่งที่ต้องทำ | วิธีทำ |
 |---|---|
@@ -590,7 +646,7 @@ argocd app get nodejs-backendapp-staging
 | เพิ่ม Secret `MANIFEST_REPO_TOKEN` | GitHub Settings → Secrets |
 | อัปเดต `.github/workflows/build-push.yml` | ตาม Section 2.2 |
 
-### Manifest Repo (nodejs_backendapp_deployment) ✅
+### Manifest Repo (app-repo) ✅
 
 | สิ่งที่ต้องทำ | วิธีทำ |
 |---|---|
@@ -616,7 +672,7 @@ argocd app get nodejs-backendapp-staging
 | CI ส่ง commit แล้ว Argo CD ไม่ sync | รอ polling 3 นาที | ใช้ `argocd app sync <app>` หรือตั้ง webhook |
 | `ImagePullBackOff` | ไม่มี imagePullSecret | ดู Section 6 |
 | Argo CD เห็น repo แต่ clone ไม่ได้ | PAT expired หรือ permission ผิด | `argocd repo list` → update credentials |
-| CI รัน `kustomize edit` แล้วไม่เปลี่ยน | ชื่อ image ใน `kustomization.yaml` ไม่ตรง | ต้องใช้ชื่อ image ตรงๆ เช่น `ghcr.io/iamsamitdev/nodejs-backendapp` |
+| CI รัน `kustomize edit` แล้วไม่เปลี่ยน | ชื่อ image ใน `kustomization.yaml` ไม่ตรง | ต้องใช้ชื่อ image ตรงๆ เช่น `ghcr.io/iamsamitdev/app-repo` |
 | Cross-repo push ล้มเหลว | `MANIFEST_REPO_TOKEN` ไม่มีสิทธิ์ write ไปอีก repo | ตรวจสอบ Fine-grained PAT permissions |
 
 ---
