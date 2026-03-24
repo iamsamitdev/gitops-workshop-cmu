@@ -1,45 +1,59 @@
-# infra/kustomize/overlays/production/kustomization.yaml
-# Workshop: GitOps with Argo CD — Day 2, Section 6
-# Production overlay — สำหรับ production environment
+# Kustomize Overlay — Production Environment
+# Section 6 Lab: Kustomize Multi-environment
+# ครอบคลุม: replicas=3, namePrefix=prod-, resource limits, immutable tag
 
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+# อ้างอิงจาก base
+resources:
   - ../../base
 
-namespace: production
+# เพิ่ม prefix ให้ทุก resource ใน production
+namePrefix: prod-
 
+# เพิ่ม labels ให้ทุก resource
 commonLabels:
   environment: production
+  managed-by: kustomize
 
+# เพิ่ม annotations ให้ทุก resource
+commonAnnotations:
+  workshop.gitops/environment: production
+  workshop.gitops/managed-by: argo-cd
+
+# กำหนด namespace
+namespace: production
+
+# patches — แก้ไขค่าเฉพาะ production
 patches:
-  # replicas สูงขึ้นสำหรับ production
-  - patch: |-
+  # เพิ่ม replicas เป็น 3
+  - target:
+      kind: Deployment
+      name: my-app
+    patch: |
       - op: replace
         path: /spec/replicas
         value: 3
-    target:
+
+  # เพิ่ม resource limits สำหรับ production
+  - target:
       kind: Deployment
       name: my-app
-  # เพิ่ม resource limits สำหรับ production
-  - patch: |-
-      - op: replace
+    patch: |
+      - op: add
         path: /spec/template/spec/containers/0/resources
         value:
           requests:
-            cpu: "100m"
             memory: "128Mi"
+            cpu: "100m"
           limits:
+            memory: "256Mi"
             cpu: "500m"
-            memory: "512Mi"
-    target:
-      kind: Deployment
-      name: my-app
 
+# กำหนด image tag สำหรับ production
+# ใช้ immutable tag (SemVer) — ห้ามใช้ latest!
+# CI pipeline จะ update tag นี้โดยใช้: kustomize edit set image
 images:
-  - name: ghcr.io/REPLACE_USERNAME/my-app
-    newTag: latest   # จะถูกแทนที่ด้วย git SHA โดย CI (ห้ามใช้ latest จริงใน production!)
-
-# คำสั่ง:
-# kubectl apply -k infra/kustomize/overlays/production/ -n production
+  - name: ghcr.io/username/my-app
+    newTag: v1.0.0
