@@ -1,0 +1,39 @@
+# Argo CD Application — Production Environment
+# Section 5 Lab: S5 — Argo CD Deep Dive
+# ชี้ไปที่ infra/kustomize/overlays/production
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-app-production
+  namespace: argocd
+  labels:
+    environment: production
+    team: workshop
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # ใช้ production project (ตั้งค่าใน gitops/appproject/project-production.yaml)
+  project: production
+
+  source:
+    # แก้ repoURL ให้ตรงกับ GitHub repo ของคุณ
+    repoURL: https://github.com/<username>/gitops-workshop-cmu.git
+    targetRevision: main
+    # ชี้ไปที่ Kustomize overlay ของ production
+    path: infra/kustomize/overlays/production
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+
+  syncPolicy:
+    # Production: ไม่ใช้ automated sync — ต้อง manual sync เพื่อ safety
+    # automated:
+    #   prune: true
+    #   selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true   # sync เฉพาะ resource ที่เปลี่ยน — ลด downtime

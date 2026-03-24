@@ -1,0 +1,86 @@
+# AppProject — Production
+# Section 7 Lab: Production Design — RBAC
+# Strict RBAC สำหรับ production — ต้อง platform team เท่านั้น
+
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: production
+  namespace: argocd
+  labels:
+    team: platform
+    environment: production
+spec:
+  description: "Production Project — strict RBAC, manual sync only"
+
+  # Source repositories ที่อนุญาต (เฉพาะ manifests repo เท่านั้น)
+  sourceRepos:
+    - https://github.com/<username>/gitops-workshop-cmu.git
+    - https://github.com/<org>/infra-manifests.git
+
+  # Destination: production namespace เท่านั้น
+  destinations:
+    - namespace: production
+      server: https://kubernetes.default.svc
+
+  # Cluster-level resources ที่ห้าม (ป้องกัน deploy cluster-wide resources)
+  clusterResourceBlacklist:
+    - group: ""
+      kind: Node
+    - group: "rbac.authorization.k8s.io"
+      kind: ClusterRole
+    - group: "rbac.authorization.k8s.io"
+      kind: ClusterRoleBinding
+
+  # Cluster-level resources ที่อนุญาต (เฉพาะที่จำเป็น)
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  # Namespace-level resources ที่อนุญาต (whitelist approach — strict)
+  namespaceResourceWhitelist:
+    - group: "apps"
+      kind: Deployment
+    - group: "apps"
+      kind: ReplicaSet
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: ServiceAccount
+    - group: "networking.k8s.io"
+      kind: Ingress
+    - group: "bitnami.com"
+      kind: SealedSecret
+    - group: ""
+      kind: Secret
+
+  # Sync windows — Production ซ้อนเฉพาะช่วงเวลา business hours
+  syncWindows:
+    - kind: allow
+      schedule: "0 10 * * 2-4"   # อนุญาตเฉพาะ อังคาร-พฤหัส 10:00
+      duration: 2h
+      applications: ["*"]
+      namespaces: ["production"]
+    - kind: deny
+      schedule: "0 0 * * 5"      # ห้าม deploy วันศุกร์ (weekend risk)
+      duration: 72h
+      applications: ["*"]
+
+  # RBAC roles สำหรับ production
+  roles:
+    - name: platform-admin
+      description: "Platform Admin — full access to production"
+      policies:
+        - p, proj:production:platform-admin, applications, *, production/*, allow
+      groups:
+        - platform-team
+
+    - name: read-only
+      description: "Read-only — ดูได้อย่างเดียว ไม่ sync"
+      policies:
+        - p, proj:production:read-only, applications, get, production/*, allow
+        - p, proj:production:read-only, applications, sync, production/*, deny
+      groups:
+        - dev-group

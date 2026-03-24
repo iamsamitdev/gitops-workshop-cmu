@@ -1,0 +1,38 @@
+# Argo CD Application — Dev Environment
+# Section 5 Lab: S5 — Argo CD Deep Dive
+# ชี้ไปที่ infra/kustomize/overlays/dev
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-app-dev
+  namespace: argocd
+  labels:
+    environment: dev
+    team: workshop
+  # Finalizer ป้องกันการลบ resources โดยไม่ตั้งใจ
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # Project ที่ application นี้อยู่
+  project: default
+
+  source:
+    # แก้ repoURL ให้ตรงกับ GitHub repo ของคุณ
+    repoURL: https://github.com/<username>/gitops-workshop-cmu.git
+    targetRevision: main
+    # ชี้ไปที่ Kustomize overlay ของ dev
+    path: infra/kustomize/overlays/dev
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dev
+
+  syncPolicy:
+    automated:
+      prune: true       # ลบ resource ที่ถูกเอาออกจาก Git
+      selfHeal: true    # ฟื้นคืนเมื่อมีคนแก้ cluster โดยตรง
+    syncOptions:
+      - CreateNamespace=true    # สร้าง namespace ถ้ายังไม่มี
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true

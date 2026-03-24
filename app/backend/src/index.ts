@@ -9,6 +9,10 @@ app.get("/", (_req: Request, res: Response) => {
   res.json({ message: "Hello from GitOps Workshop! 🚀" });
 });
 
+app.get("/about", (_req: Request, res: Response) => {
+  res.json({ message: "This is the about page" });
+});
+
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "ok" });
 });

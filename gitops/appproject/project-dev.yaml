@@ -1,0 +1,73 @@
+# AppProject — Dev Team
+# Section 7 Lab: Production Design — RBAC
+# จำกัด dev-team ให้ deploy ได้เฉพาะ namespace: dev และ staging เท่านั้น
+
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: dev-team
+  namespace: argocd
+  labels:
+    team: dev
+spec:
+  description: "Dev Team Project — สิทธิ์ deploy ใน dev และ staging namespace"
+
+  # Source repositories ที่อนุญาต
+  sourceRepos:
+    - https://github.com/<username>/gitops-workshop-cmu.git
+    - https://github.com/<org>/dev-manifests.git
+
+  # Destination ที่อนุญาต — dev และ staging เท่านั้น
+  destinations:
+    - namespace: dev
+      server: https://kubernetes.default.svc
+    - namespace: staging
+      server: https://kubernetes.default.svc
+
+  # Cluster-level resources ที่อนุญาตให้สร้าง
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  # Namespace-level resources ที่ห้ามสร้าง (ป้องกัน abuse)
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+
+  # Namespace-level resources ที่อนุญาต
+  namespaceResourceWhitelist:
+    - group: "apps"
+      kind: Deployment
+    - group: "apps"
+      kind: ReplicaSet
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: ServiceAccount
+    - group: "networking.k8s.io"
+      kind: Ingress
+
+  # Sync windows — กำหนดช่วงเวลาที่อนุญาตให้ sync
+  # (Uncomment เพื่อ enable)
+  # syncWindows:
+  #   - kind: allow
+  #     schedule: "0 9 * * 1-5"   # อนุญาต sync จันทร์-ศุกร์ 09:00
+  #     duration: 8h
+  #     applications: ["*"]
+
+  # RBAC roles สำหรับ project นี้
+  roles:
+    - name: dev-developer
+      description: "Developer role — sync ได้ แต่ลบ app ไม่ได้"
+      policies:
+        - p, proj:dev-team:dev-developer, applications, get, dev-team/*, allow
+        - p, proj:dev-team:dev-developer, applications, sync, dev-team/*, allow
+        - p, proj:dev-team:dev-developer, applications, create, dev-team/*, allow
+        - p, proj:dev-team:dev-developer, applications, update, dev-team/*, allow
+        - p, proj:dev-team:dev-developer, applications, delete, dev-team/*, deny
+      groups:
+        - dev-group

@@ -16,17 +16,17 @@
 **GitHub Actions** คือ CI/CD platform ของ GitHub ที่ให้เรา automate workflow ได้ตรงบน repository:
 
 ```
-┌────────────────── GitHub Actions Workflow ──────────────────┐
-│                                                              │
-│  Trigger (Event)         Job                    Steps        │
-│  ┌──────────────┐   ┌──────────────┐   ┌─────────────────┐  │
-│  │ push to main │──▶│ build-and-   │──▶│ 1. Checkout     │  │
-│  │ pull_request │   │ push         │   │ 2. Login GHCR   │  │
-│  │ manual       │   │              │   │ 3. Build image  │  │
-│  └──────────────┘   │ runs-on:     │   │ 4. Push image   │  │
-│                     │ ubuntu-latest │   └─────────────────┘  │
-│                     └──────────────┘                         │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────── GitHub Actions Workflow ─────────────────┐
+│                                                            │
+│  Trigger (Event)         Job                    Steps      │
+│  ┌──────────────┐   ┌──────────────┐   ┌────────────────┐  │
+│  │ push to main │──▶│ build-and-  │──▶│ 1. Checkout    │  │
+│  │ pull_request │   │ push         │   │ 2. Login GHCR  │  │
+│  │ manual       │   │              │   │ 3. Build image │  │
+│  └──────────────┘   │ runs-on:     │   │ 4. Push image  │  │
+│                     │ ubuntu-latest│   └────────────────┘  │
+│                     └──────────────┘                       │
+└────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -188,8 +188,8 @@ docker run -d -p 3000:3000 ghcr.io/<username>/<repo>:<sha>
 
 ```
 ┌─────────────────── GitOps Concept ───────────────────┐
-│                                                       │
-│   "สิ่งที่อยู่ใน Git = สิ่งที่ควรอยู่ใน Cluster"         │
+│                                                      │ 
+│   "สิ่งที่อยู่ใน Git = สิ่งที่ควรอยู่ใน Cluster"                 │
 │                                                       │
 │   Git Repo (desired state)   Cluster (actual state)   │
 │   ┌────────────────────┐    ┌────────────────────┐    │
@@ -198,8 +198,8 @@ docker run -d -p 3000:3000 ghcr.io/<username>/<repo>:<sha>
 │   │   replicas: 3      │    │   replicas: 3      │    │
 │   └────────────────────┘    └────────────────────┘    │
 │                                                       │
-│   ถ้าเท่ากัน  →  ✅ Synced (สถานะปกติ)               │
-│   ถ้าไม่เท่า  →  ⚠️ OutOfSync (ต้อง sync)            │
+│   ถ้าเท่ากัน  →  ✅ Synced (สถานะปกติ)                   │
+│   ถ้าไม่เท่า  →  ⚠️ OutOfSync (ต้อง sync)                 │
 └───────────────────────────────────────────────────────┘
 ```
 
@@ -219,14 +219,14 @@ docker run -d -p 3000:3000 ghcr.io/<username>/<repo>:<sha>
 ### 4.3 Manifest Repo — ทำไมต้องแยก App Code กับ Config
 
 ```
-┌─── App Repo ───────────────┐    ┌─── Manifest Repo ────────────┐
+┌─── App Repo  ───────────────┐    ┌─── Manifest Repo  ────────────┐
 │ (Source Code + Dockerfile)  │    │ (Kubernetes YAML configs)     │
 │                             │    │                               │
 │ src/                        │    │ base/                         │
 │   index.js                  │    │   deployment.yaml             │
 │   ...                       │    │   service.yaml                │
 │ Dockerfile                  │    │   kustomization.yaml          │
-│ .github/workflows/ci.yml   │    │ overlays/                     │
+│ .github/workflows/ci.yml    │    │ overlays/                     │
 │                             │    │   dev/                        │
 │ CI: build → push image      │    │   staging/                    │
 └─────────────────────────────┘    │   production/                 │
@@ -323,28 +323,28 @@ kubectl get pods -w -n dev  # watch pods เปลี่ยน
 
 ```
 ┌──────────────────── Day 1 End-to-End Flow ────────────────────┐
-│                                                                │
+│                                                               │
 │  1. Code         2. GitHub Actions      3. GHCR               │
 │  ┌────────┐     ┌────────────────┐     ┌──────────────┐       │
-│  │ git    │────▶│ build image    │────▶│ push image   │       │
+│  │ git    │────▶│ build image    │────▶│ push image  │       │
 │  │ push   │     │ tag: git SHA   │     │ ghcr.io/...  │       │
 │  └────────┘     └────────────────┘     └──────┬───────┘       │
-│                                                │               │
-│  4. Update Manifest   5. kubectl apply (Manual)│               │
-│  ┌────────────────┐   ┌────────────────┐       │               │
-│  │ แก้ image tag  │──▶│ kubectl apply  │◀──────┘               │
-│  │ ใน manifest    │   │ -k . (ด้วยมือ) │                       │
-│  │ repo + commit  │   └───────┬────────┘                       │
-│  └────────────────┘           │                                │
-│                               ▼                                │
-│                        ┌──────────────┐                        │
-│                        │  Kubernetes  │                        │
-│                        │  Cluster     │                        │
-│                        └──────────────┘                        │
-│                                                                │
-│  Day 2: Argo CD จะแทน step 5 (kubectl apply ด้วยมือ)           │
-│         ให้เป็นอัตโนมัติ + self-heal + drift detection!        │
-└────────────────────────────────────────────────────────────────┘
+│                                               │               │
+│  4. Update Manifest   5. kubectl apply (Manual)│              │
+│  ┌────────────────┐   ┌────────────────┐       │              │
+│  │ แก้ image tag   │─▶│ kubectl apply  │◀──────┘              │
+│  │ ใน manifest    │   │ -k . (ด้วยมือ)   │                      │
+│  │ repo + commit  │   └───────┬────────┘                      │
+│  └────────────────┘           │                               │
+│                               ▼                               │
+│                        ┌──────────────┐                       │
+│                        │  Kubernetes  │                       │
+│                        │  Cluster     │                       │
+│                        └──────────────┘                       │
+│                                                               │
+│  Day 2: Argo CD จะแทน step 5 (kubectl apply ด้วยมือ)            │
+│         ให้เป็นอัตโนมัติ + self-heal + drift detection!            │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ---

@@ -1,0 +1,88 @@
+# ApplicationSet — Multi-environment
+# Section 8: Best Practices — Scaling Team
+# สร้าง 3 Argo CD Applications อัตโนมัติจาก template เดียว
+# ผลลัพธ์: my-app-dev, my-app-staging, my-app-production
+
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: my-app-set
+  namespace: argocd
+  labels:
+    app: my-app
+    managed-by: applicationset
+spec:
+  # Generator: สร้าง parameters สำหรับ template
+  generators:
+    - list:
+        elements:
+          # Dev environment
+          - env: dev
+            namespace: dev
+            project: dev-team
+            replicas: "1"
+            syncAutomated: "true"
+
+          # Staging environment
+          - env: staging
+            namespace: staging
+            project: dev-team
+            replicas: "2"
+            syncAutomated: "true"
+
+          # Production environment — manual sync
+          - env: production
+            namespace: production
+            project: production
+            replicas: "3"
+            syncAutomated: "false"
+
+  # Template: ใช้ parameters จาก generator แทนค่า {{variable}}
+  template:
+    metadata:
+      name: "my-app-{{env}}"
+      labels:
+        environment: "{{env}}"
+        app: my-app
+    spec:
+      project: "{{project}}"
+
+      source:
+        # แก้ repoURL ให้ตรงกับ GitHub repo ของคุณ
+        repoURL: https://github.com/<username>/gitops-workshop-cmu.git
+        targetRevision: main
+        # ชี้ไปที่ overlay ของแต่ละ environment อัตโนมัติ
+        path: "infra/kustomize/overlays/{{env}}"
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{namespace}}"
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - PruneLast=true
+
+  # Strategy: sync ทีละ app — ลด blast radius ถ้ามีปัญหา
+  strategy:
+    type: RollingSync
+    rollingSync:
+      steps:
+        - matchExpressions:
+            - key: environment
+              operator: In
+              values:
+                - dev
+        - matchExpressions:
+            - key: environment
+              operator: In
+              values:
+                - staging
+        - matchExpressions:
+            - key: environment
+              operator: In
+              values:
+                - production

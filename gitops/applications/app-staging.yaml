@@ -1,0 +1,37 @@
+# Argo CD Application — Staging Environment
+# Section 5 Lab: S5 — Argo CD Deep Dive
+# ชี้ไปที่ infra/kustomize/overlays/staging
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-app-staging
+  namespace: argocd
+  labels:
+    environment: staging
+    team: workshop
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # Project ที่ application นี้อยู่
+  project: default
+
+  source:
+    # แก้ repoURL ให้ตรงกับ GitHub repo ของคุณ
+    repoURL: https://github.com/<username>/gitops-workshop-cmu.git
+    targetRevision: main
+    # ชี้ไปที่ Kustomize overlay ของ staging
+    path: infra/kustomize/overlays/staging
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+
+  syncPolicy:
+    automated:
+      prune: true       # ลบ resource ที่ถูกเอาออกจาก Git
+      selfHeal: true    # ฟื้นคืนเมื่อมีคนแก้ cluster โดยตรง
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
